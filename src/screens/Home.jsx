@@ -8,78 +8,88 @@ import {
   Alert,
   Linking,
   TextInput,
+  RefreshControl,
 } from 'react-native';
-import {useNavigation} from '@react-navigation/native';
+import {useNavigation, useFocusEffect} from '@react-navigation/native';
+import SQLite from 'react-native-sqlite-storage';
+import ChatService from '../database/ChatService';
 
-const dataDummyWhatsapp = [
-  {
-    id: '001',
-    name: 'Pras',
-    number: '6285814848006',
-    time: '04/11/2025 20:13:00',
-  },
-  {
-    id: '002',
-    name: 'Pras',
-    number: '6281314758006',
-    time: '04/11/2025 23:13:00',
-  },
-  {
-    id: '003',
-    name: '',
-    number: '62878628818016',
-    time: '04/11/2025 21:13:00',
-  },
-  {
-    id: '004',
-    name: '',
-    number: '6285714848096',
-    time: '04/11/2025 20:13:00',
-  },
-  {
-    id: '005',
-    name: 'Andini',
-    number: '6285714848096',
-    time: '04/11/2025 20:13:00',
-  },
-  {
-    id: 'Septi',
-    name: 'Pras',
-    number: '6285714848096',
-    time: '04/11/2025 20:13:00',
-  },
-  {
-    id: '007',
-    name: 'Kirana',
-    number: '6285714848096',
-    time: '04/11/2025 20:13:00',
-  },
-  {
-    id: '008',
-    name: 'Dwi',
-    number: '6285714848096',
-    time: '04/11/2025 20:13:00',
-  },
-];
+SQLite.enablePromise(true);
 
 const waChatUrl = 'https://wa.me/';
 
 const Home = () => {
-  const [dataWhatsapp, setDataWhatsapp] = React.useState(dataDummyWhatsapp);
+  const [dataWhatsapp, setDataWhatsapp] = React.useState([]);
   const [search, setSearch] = React.useState(false);
   const [searchInput, setSearchInput] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
   const navigation = useNavigation();
 
-  const handleHapusWhatsapp = id => {
-    const index = dataWhatsapp.findIndex(wa => wa.id === id);
-    const dataWhatsappBaru = dataWhatsapp;
-    dataWhatsappBaru.splice(index, 1);
-    setDataWhatsapp([...dataWhatsappBaru]);
+  // get all chats
+  const loadChats = () => {
+    setLoading(true);
+    ChatService.getChats()
+      .then(data => {
+        setDataWhatsapp(data);
+        setLoading(false);
+      })
+      .catch(error => {
+        Alert.alert(error.toString());
+        setLoading(false);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  };
+
+  const handleHapusWhatsapp = async id => {
+    try {
+      await ChatService.deleteChat(id);
+      if (search) {
+        handleSearchChat(searchInput);
+      } else {
+        loadChats();
+      }
+    } catch (error) {
+      Alert.alert(error.toString());
+      setLoading(false);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSearchable = () => {
     setSearch(prev => !prev);
+    loadChats();
   };
+
+  const handleSearchChat = search => {
+    setLoading(true);
+    ChatService.searchChat(search)
+      .then(data => {
+        setDataWhatsapp(data);
+        setLoading(false);
+      })
+      .catch(error => {
+        Alert.alert(error.toString());
+        setLoading(false);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadChats();
+    }, []),
+  );
+
+  React.useEffect(() => {
+    if (!search) {
+      setSearchInput('');
+    }
+  }, [search]);
 
   return (
     <View style={{flex: 1}}>
@@ -106,12 +116,15 @@ const Home = () => {
                 }}
                 placeholder="Search anything"
                 value={searchInput}
-                onChange={text => setSearchInput(text)}
+                onChangeText={text => setSearchInput(text)}
               />
             </View>
             <View
               style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
               <TouchableOpacity
+                onPress={() => {
+                  handleSearchChat(searchInput);
+                }}
                 style={{
                   backgroundColor: '#0366d6',
                   paddingHorizontal: 7,
@@ -176,9 +189,16 @@ const Home = () => {
         )}
       </View>
       <View style={{flex: 1}}>
-        {dataWhatsapp.length > 0 ? (
+        {loading ? (
+          <Text style={{textAlign: 'center', marginVertical: '70%'}}>
+            Loading...
+          </Text>
+        ) : dataWhatsapp.length > 0 ? (
           <FlatList
             data={dataWhatsapp}
+            refreshControl={
+              <RefreshControl refreshing={loading} onRefresh={loadChats} />
+            }
             renderItem={({item, index}) => {
               return (
                 <View
@@ -194,7 +214,7 @@ const Home = () => {
                   <View style={{flex: 6}}>
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: 14,
                         fontWeight: '600',
                         color: '#3a8139',
                       }}>
@@ -206,13 +226,13 @@ const Home = () => {
                         fontSize: 16,
                         fontWeight: '700',
                       }}>
-                      {item.number}
+                      {item.phone_number}
                     </Text>
-                    <Text style={{fontSize: 10}}>⏲ {item.time}</Text>
+                    <Text style={{fontSize: 12}}>🕒 {item.chated_at}</Text>
                   </View>
                   <TouchableOpacity
                     onPress={() => {
-                      Linking.openURL(`${waChatUrl}${item.number}`);
+                      Linking.openURL(`${waChatUrl}${item.phone_number}`);
                     }}
                     style={{
                       flex: 1,
